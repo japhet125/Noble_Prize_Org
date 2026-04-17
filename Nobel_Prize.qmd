@@ -1,0 +1,55 @@
+---
+title: "Nobel Prize API"
+author: "Guibril Ramde"
+format: html
+editor: visual
+---
+
+## ##Approach
+
+In this assignment, I will use the Nobel Prize API to retrieve JSON data about Nobel laureates and prizes. The main endpoint I will use is the Laureates API, which returns information about individuals and organizations connected to Nobel Prizes. I may also use the Nobel Prizes endpoint if needed for prize-level comparisons. The Nobel Prize Developer Zone provides both of these public endpoints in API version 2.1\
+\
+After retrieving the JSON data in R, I will transform the nested response into tidy data frames using packages such as \`jsonlite\`, \`httr\`, \`dplyr\`, \`tidyr\`, and \`janitor\`. I will then explore the cleaned data to answer four data-driven questions about Nobel laureates.\
+\
+The four questions I plan to investigate are:
+
+-   Which countries have produced the highest number of Nobel laureates?
+
+-   Which country has lost the most Nobel laureates, meaning laureates who were born there but received the prize as citizens of another country?
+
+-   Have any individuals won the Nobel Prize more than once?
+
+-   What age group is most common among Nobel laureates at the time they received the prize?
+
+    For each question, I will describe the question, show the R code used to answer it, and present the result using a table, summary, or visualization.
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(jsonlite)
+library(httr)
+library(janitor)
+
+
+url <- "https://api.nobelprize.org/2.1/laureates"
+
+response <- GET(url)
+stop_for_status(response)
+
+raw_text <- content(response, as = "text", encoding = "UTF-8")
+data <- fromJSON(raw_text, flatten = TRUE)
+
+
+names(data)
+glimpse(data)
+
+
+```
+
+```{r}
+laureates <- as_tibble(data$laureates) |>
+  clean_names()
+
+glimpse(laureates)
+```

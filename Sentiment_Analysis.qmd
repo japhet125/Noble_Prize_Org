@@ -1,0 +1,63 @@
+---
+title: "Sentiment Analysis"
+author: "Guibril Ramde"
+format: html
+editor: visual
+---
+
+## ##Approach
+
+In this assignment, I will reproduce and extend the sentiment analysis example from Chapter 2 of \*Text Mining with R\* by Julia Silge and David Robinson. First, I will recreate the original example in a Quarto document using the same general workflow shown in the chapter. This includes tokenizing the text, joining it with sentiment lexicons, and analyzing the emotional tone of the text.\
+\
+To reproduce the base example, I will use the \`janeaustenr\` package together with the \`tidytext\` and \`textdata\` packages. I will download the required sentiment lexicons such as AFINN, Bing, and NRC, and then use them to analyze the Jane Austen texts.\
+\
+To extend the analysis, I will use a different text corpus of my choice and apply at least one additional sentiment lexicon. I will then compare the results from the new corpus with the original Jane Austen example and explain how the sentiment patterns differ across lexicons and texts.\
+\
+For the final report, I will include:\
+1. the reproduced Chapter 2 example,\
+2. a citation to the book and original example,\
+3. an extended analysis using a new corpus,\
+4. at least one additional sentiment lexicon,\
+5. and an explanation of how the new results differ from the original results.
+
+```{r}
+install.packages("textdata")
+library(tidytext)
+library(textdata)
+
+get_sentiments("afinn")
+```
+
+```{r}
+get_sentiments("bing")
+```
+
+```{r}
+get_sentiments("nrc")
+```
+
+```{r}
+library(janeaustenr)
+library(stringr)
+
+
+tidy_books <- austen_books() |>
+  group_by(book) |>
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text,
+                                regex("^chapter [\\divxlc]",
+                                            ignore_case = TRUE)))) |>
+  ungroup() |>
+  unnest_tokens(word, text)
+
+nrc_joy <- get_sentiments("nrc") |>
+  filter(sentiment == "joy")
+
+
+tidy_books |>
+  filter(book == "Emma") |>
+  inner_join(nrc_joy) |>
+  count(word, sort = TRUE)
+  
+```
