@@ -13,7 +13,7 @@ After retrieving the JSON data in R, I will transform the nested response into t
 \
 The four questions I plan to investigate are:
 
--   Which countries have produced the highest number of Nobel laureates?
+-   Which countries have produced the highest number of Nobel laureates??
 
 -   Which country has lost the most Nobel laureates, meaning laureates who were born there but received the prize as citizens of another country?
 
@@ -30,6 +30,7 @@ library(readr)
 library(jsonlite)
 library(httr)
 library(janitor)
+library(ggplot2)
 
 
 url <- "https://api.nobelprize.org/2.1/laureates"
@@ -53,3 +54,218 @@ laureates <- as_tibble(data$laureates) |>
 
 glimpse(laureates)
 ```
+
+**##Which countries have produced the highest number of Nobel laureates?**
+
+```{r}
+laureates |>
+  drop_na()
+
+```
+
+```{r}
+laureates |>
+  filter(!is.na(birth_place_country_en)) |>
+  count(birth_place_country_en, sort = TRUE)
+```
+
+```{r}
+library(ggplot2)
+
+country_counts <- laureates |>
+  filter(!is.na(birth_place_country_en)) |>
+  count(birth_place_country_en, sort = TRUE) |>
+  slice_head(n = 10)
+
+ggplot(data = country_counts, 
+       aes(x = reorder(birth_place_country_en, n), y = n, fill = birth_place_country_en) ) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Top 10 Countries by Number of Nobel Laureates",
+    x = "Country",
+    y = "Number of Laureates"
+  ) +
+  theme(legend.position = "none")
+```
+
+**##Using a map for better visualization**
+
+```{r}
+#install.packages("rnaturalearth")
+#install.packages("rnaturalearthdata")
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+
+library(rnaturalearthdata)
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+country_counts <- laureates |>
+  filter(!is.na(birth_place_country_now_en)) |>
+  count(birth_place_country_now_en, sort = TRUE)
+
+world_nobel <- world |>
+  mutate(name = str_trim(name)) |>
+  left_join(
+    country_counts,
+    by = c("name" = "birth_place_country_now_en")
+  )
+
+ggplot(world_nobel) +
+  geom_sf(aes(fill = n), color = "gray80", linewidth = 0.2) +
+  scale_fill_viridis_c(na.value = "white") +
+  labs(
+    title = "World Map of Nobel Laureates by Birth Country",
+    fill = "Count"
+  ) +
+  theme_void()
+```
+
+**##Which country has lost the most Nobel laureates, meaning laureates who were born there but received the prize as citizens of another country?**
+
+The previous bar chart and map show the countries where Nobel laureates were born, which answers the first question. To answer the second question, I compare each laureate’s birth country with the country of affiliation at the time of the award. This helps identify countries that “lost” laureates, meaning individuals who were born in one country but received the prize while affiliated with another.
+
+```{r}
+library(tidyverse)
+
+laureates_step1 <- laureates |>
+  select(id, full_name_en, birth_place_country_now_en, nobel_prizes) |>
+  unnest(nobel_prizes) |>
+  unnest(affiliations)
+glimpse(laureates_step1)
+
+```
+
+```{r}
+comparison <- laureates |>
+  select(id, full_name_en, birth_place_country_now_en, nobel_prizes) |>
+  unnest(nobel_prizes) |>
+  unnest(affiliations) |>
+  filter(!is.na(birth_place_country_now_en),
+         !is.na(country.en)) |>
+  mutate(
+    birth_country = birth_place_country_now_en,
+    award_country = country.en
+  )
+```
+
+```{r}
+movers <- comparison |>
+  filter(birth_country != award_country)
+
+movers |>
+  count(birth_country, sort = TRUE)
+```
+
+```{r}
+movers |>
+  count(birth_country, sort = TRUE) |>
+  slice_head(n = 10) |>
+  ggplot(aes(x = reorder(birth_country, n), y = n)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Top Birth Countries Losing Nobel Laureates",
+    x = "Birth Country",
+    y = "Number of Laureates"
+  ) +
+  theme_minimal()
+```
+
+This chart shows the countries of birth for laureates who later received the Nobel Prize while affiliated with a different country. A higher count suggests that more laureates born in that country later worked elsewhere at the time of their award.
+
+```{r}
+#install.packages("networkD3")
+library(networkD3)
+library(dplyr)
+
+flows <- comparison |>
+  count(birth_country, award_country, sort = TRUE) |>
+  filter(birth_country != award_country)
+
+nodes <- data.frame(
+  name = unique(c(flows$birth_country, flows$award_country))
+)
+
+flows <- flows |>
+  mutate(
+    source = match(birth_country, nodes$name) - 1,
+    target = match(award_country, nodes$name) - 1
+  )
+
+sankeyNetwork(
+  Links = flows,
+  Nodes = nodes,
+  Source = "source",
+  Target = "target",
+  Value = "n",
+  NodeID = "name",
+  fontSize = 12
+)
+```
+
+To better understand the movement of Nobel laureates between countries, I used a Sankey diagram to visualize the flow from birth country to the country of affiliation at the time of the award. This allows us to clearly observe migration patterns and identify which countries attract or lose talent
+
+**##Have any individuals won the Nobel Prize more than once?**
+
+```{r}
+laureates_prizes <- laureates |>
+  select(id, full_name_en, nobel_prizes) |>
+  unnest(nobel_prizes)
+```
+
+```{r}
+multi_awarded <- laureates_prizes |>
+  count(id, full_name_en, sort = TRUE)
+
+multi_awarded |>
+  filter(n > 1)
+```
+
+To determine whether any individuals have won the Nobel Prize more than once, I unnested the \`nobel_prizes\` field and counted the number of prizes associated with each laureate. In the data retrieved for this analysis, no individual appears more than once.
+
+**##What age group is most common among Nobel laureates at the time they received the prize?**
+
+```{r}
+laureates_age <- laureates |>
+  select(id, full_name_en, birth_year, nobel_prizes) |>
+  unnest(nobel_prizes) |>
+  filter(!is.na(birth_year), !is.na(awardYear)) |>
+  mutate(
+    birth_year = as.numeric(birth_year),
+    awardYear = as.numeric(awardYear),
+    age_at_award = awardYear - birth_year,
+    age_group = case_when(
+      age_at_award < 40 ~ "Under 40",
+      age_at_award >= 40 & age_at_award < 50 ~ "40-49",
+      age_at_award >= 50 & age_at_award < 60 ~ "50-59",
+      age_at_award >= 60 & age_at_award < 70 ~ "60-69",
+      age_at_award >= 70 ~ "70+",
+      TRUE ~ NA_character_
+    )
+  )
+
+laureates_age |>
+  count(age_group, sort = TRUE)
+  
+
+```
+
+```{r}
+laureates_age |>
+  count(age_group, sort = TRUE) |>
+  ggplot(aes(x = reorder(age_group, n), y = n)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Most Common Age Groups at Time of Nobel Prize Award",
+    x = "Age Group",
+    y = "Number of Laureates"
+  ) +
+  theme_minimal()
+```
+
+## Conclusion
+
+This assignment was both challenging and informative. By working with the Nobel Prize API, I learned how to retrieve and analyze nested JSON data in R, transform it into tidy data frames, and use multiple visualizations to answer meaningful questions. The analysis showed that Nobel Prize data can reveal not only where laureates were born, but also how talent moves across countries over time. Overall, this project improved my understanding of API-based data analysis and data visualization in R.
